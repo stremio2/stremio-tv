@@ -626,13 +626,14 @@ private fun handlePlayerSessionEnd(
 
     val hasAudioTrackSelection = !sessionResult.selectedAudioTrackId.isNullOrBlank()
     val hasSubtitleTrackSelection = !sessionResult.selectedSubtitleTrackId.isNullOrBlank()
-    val hasSubtitleDelayChange = sessionResult.subtitleDelayMs != 0L
+    val hasSubtitleDelayChange = sessionResult.subtitleDelayMs != 0L || sessionResult.subtitleRate != 1.0
     if (hasAudioTrackSelection || hasSubtitleTrackSelection || hasSubtitleDelayChange) {
         playbackTrackSelectionStore.updateSelection(
             playbackId = playbackId,
             audioTrackId = sessionResult.selectedAudioTrackId,
             subtitleTrackId = sessionResult.selectedSubtitleTrackId,
             subtitleDelayMs = sessionResult.subtitleDelayMs,
+            subtitleRate = sessionResult.subtitleRate,
             updateAudio = hasAudioTrackSelection,
             updateSubtitle = hasSubtitleTrackSelection,
             updateSubtitleDelay = true
@@ -1747,6 +1748,7 @@ class MainActivity : ComponentActivity() {
                                 preferredAudioTrackId = rememberedTrackSelection?.audioTrackId,
                                 preferredSubtitleTrackId = rememberedTrackSelection?.subtitleTrackId,
                                 initialSubtitleDelayMs = rememberedTrackSelection?.subtitleDelayMs ?: 0L,
+                                initialSubtitleRate = rememberedTrackSelection?.subtitleRate ?: 1.0,
                                 playbackSettings = PlaybackSettings(
                                     tunnelingEnabled = currentProfile?.tunnelingEnabled ?: false,
                                     mapDV7ToHevc = currentProfile?.mapDV7ToHevc ?: false,

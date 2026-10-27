@@ -215,6 +215,7 @@ class ExoPlayerBackend(
     private var subtitleVerticalOffsetPercent: Int = 0
     private var subtitleSizePercent: Int = 100
     private val subtitleDelayUs = AtomicLong(0L)
+    @Volatile private var subtitleRate: Double = 1.0
     private var subtitleTextColor: Int = 0xFFFFFFFF.toInt()
     private var subtitleBackgroundColor: Int = 0x00000000
     private var lastCueGroup: androidx.media3.common.text.CueGroup? = null
@@ -719,6 +720,13 @@ class ExoPlayerBackend(
         _uiState.update { it.copy(subtitleDelayMs = clamped) }
     }
 
+    override fun setSubtitleRate(rate: Double) {
+        if (released) return
+        val sanitized = SubtitleRatePresets.sanitize(rate)
+        subtitleRate = sanitized
+        _uiState.update { it.copy(subtitleRate = sanitized) }
+    }
+
     override fun setSubtitleTextColor(color: Int) {
         if (released) return
         subtitleTextColor = color
@@ -842,6 +850,7 @@ class ExoPlayerBackend(
         playerView = null
         lastCueGroup = null
         subtitleDelayUs.set(0L)
+        subtitleRate = 1.0
 
         listOfNotNull(okHttpClient, torrentOkHttpClient).forEach { client ->
             Thread {
@@ -1031,7 +1040,7 @@ class ExoPlayerBackend(
                 .setExtensionRendererMode(playbackSettings.decoderPriority)
                 .setMapDV7ToHevc(playbackSettings.mapDV7ToHevc)
         } else {
-            SubtitleDelayRenderersFactory(appContext, subtitleDelayUs::get)
+            SubtitleDelayRenderersFactory(appContext, subtitleDelayUs::get) { subtitleRate }
                 .setExtensionRendererMode(playbackSettings.decoderPriority)
                 .setMapDV7ToHevc(playbackSettings.mapDV7ToHevc)
         }
@@ -2044,7 +2053,8 @@ class ExoPlayerBackend(
 
 private class SubtitleDelayRenderersFactory(
     context: Context,
-    private val subtitleDelayUsProvider: () -> Long
+    private val subtitleDelayUsProvider: () -> Long,
+    private val subtitleRateProvider: () -> Double
 ) : DefaultRenderersFactory(context) {
     override fun buildTextRenderers(
         context: Context,
@@ -2056,17 +2066,23 @@ private class SubtitleDelayRenderersFactory(
         val startIndex = out.size
         super.buildTextRenderers(context, output, outputLooper, extensionRendererMode, out)
         for (index in startIndex until out.size) {
-            out[index] = SubtitleDelayRenderer(out[index], subtitleDelayUsProvider)
+            out[index] = SubtitleDelayRenderer(out[index], subtitleDelayUsProvider, subtitleRateProvider)
         }
     }
 }
 
 private class SubtitleDelayRenderer(
     renderer: Renderer,
-    private val subtitleDelayUsProvider: () -> Long
+    private val subtitleDelayUsProvider: () -> Long,
+    private val subtitleRateProvider: () -> Double
 ) : ForwardingRenderer(renderer) {
     override fun render(positionUs: Long, elapsedRealtimeUs: Long) {
-        val adjustedPositionUs = (positionUs - subtitleDelayUsProvider()).coerceAtLeast(0L)
+        // video time = cue time * rate + delay, so cue time = (video time - delay) / rate
+        val adjustedPositionUs = SubtitleRatePresets.toCueTimeUs(
+            positionUs,
+            subtitleDelayUsProvider(),
+            subtitleRateProvider()
+        )
         super.render(adjustedPositionUs, elapsedRealtimeUs)
     }
 }

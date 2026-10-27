@@ -38,7 +38,8 @@ data class PlayerSessionResult(
     val selectedSourceUrl: String?,
     val selectedAudioTrackId: String?,
     val selectedSubtitleTrackId: String?,
-    val subtitleDelayMs: Long = 0L
+    val subtitleDelayMs: Long = 0L,
+    val subtitleRate: Double = 1.0
 )
 
 @Composable
@@ -58,6 +59,7 @@ fun PlayerScreen(
     preferredAudioTrackId: String? = null,
     preferredSubtitleTrackId: String? = null,
     initialSubtitleDelayMs: Long = 0L,
+    initialSubtitleRate: Double = 1.0,
     playbackSettings: PlaybackSettings = PlaybackSettings(),
     skipSegmentInfo: SkipSegmentInfo? = null,
     nextEpisodeInfo: NextEpisodeInfo? = null,
@@ -204,6 +206,9 @@ fun PlayerScreen(
         if (initialSubtitleDelayMs != 0L) {
             playbackController.setSubtitleDelay(initialSubtitleDelayMs)
         }
+        if (initialSubtitleRate != 1.0) {
+            playbackController.setSubtitleRate(initialSubtitleRate)
+        }
     }
 
     val persistAndBack = {
@@ -251,7 +256,8 @@ fun PlayerScreen(
                 selectedSourceUrl = selectedSourceUrl,
                 selectedAudioTrackId = uiState.selectedAudioTrackId,
                 selectedSubtitleTrackId = uiState.selectedSubtitleTrackId,
-                subtitleDelayMs = uiState.subtitleDelayMs
+                subtitleDelayMs = uiState.subtitleDelayMs,
+                subtitleRate = uiState.subtitleRate
             )
         )
     }

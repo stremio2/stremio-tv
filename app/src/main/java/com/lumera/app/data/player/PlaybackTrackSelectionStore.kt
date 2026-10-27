@@ -12,7 +12,8 @@ class PlaybackTrackSelectionStore @Inject constructor(
     data class Selection(
         val audioTrackId: String?,
         val subtitleTrackId: String?,
-        val subtitleDelayMs: Long? = null
+        val subtitleDelayMs: Long? = null,
+        val subtitleRate: Double? = null
     )
 
     private val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
@@ -30,11 +31,17 @@ class PlaybackTrackSelectionStore @Inject constructor(
         } else {
             null
         }
-        if (audioTrackId == null && subtitleTrackId == null && subtitleDelay == null) return null
+        val subtitleRate = if (prefs.contains(subtitleRateKey(scopedId))) {
+            java.lang.Double.longBitsToDouble(prefs.getLong(subtitleRateKey(scopedId), 1.0.toRawBits()))
+        } else {
+            null
+        }
+        if (audioTrackId == null && subtitleTrackId == null && subtitleDelay == null && subtitleRate == null) return null
         return Selection(
             audioTrackId = audioTrackId,
             subtitleTrackId = subtitleTrackId,
-            subtitleDelayMs = subtitleDelay
+            subtitleDelayMs = subtitleDelay,
+            subtitleRate = subtitleRate
         )
     }
 
@@ -43,6 +50,7 @@ class PlaybackTrackSelectionStore @Inject constructor(
         audioTrackId: String?,
         subtitleTrackId: String?,
         subtitleDelayMs: Long? = null,
+        subtitleRate: Double? = null,
         updateAudio: Boolean,
         updateSubtitle: Boolean,
         updateSubtitleDelay: Boolean = false
@@ -74,6 +82,11 @@ class PlaybackTrackSelectionStore @Inject constructor(
                 } else {
                     putLong(subtitleDelayKey(scopedId), delay)
                 }
+                if (subtitleRate == null || subtitleRate == 1.0) {
+                    remove(subtitleRateKey(scopedId))
+                } else {
+                    putLong(subtitleRateKey(scopedId), subtitleRate.toRawBits())
+                }
             }
         }.apply()
     }
@@ -84,6 +97,7 @@ class PlaybackTrackSelectionStore @Inject constructor(
             .remove(audioKey(scopedId))
             .remove(subtitleKey(scopedId))
             .remove(subtitleDelayKey(scopedId))
+            .remove(subtitleRateKey(scopedId))
             .apply()
     }
 
@@ -92,7 +106,8 @@ class PlaybackTrackSelectionStore @Inject constructor(
         prefs.all.keys.forEach { key ->
             if (key.startsWith("${KEY_AUDIO_PREFIX}$prefix") ||
                 key.startsWith("${KEY_SUBTITLE_PREFIX}$prefix") ||
-                key.startsWith("${KEY_SUBTITLE_DELAY_PREFIX}$prefix")
+                key.startsWith("${KEY_SUBTITLE_DELAY_PREFIX}$prefix") ||
+                key.startsWith("${KEY_SUBTITLE_RATE_PREFIX}$prefix")
             ) {
                 editor.remove(key)
             }
@@ -110,10 +125,13 @@ class PlaybackTrackSelectionStore @Inject constructor(
 
     private fun subtitleDelayKey(scopedId: String): String = "${KEY_SUBTITLE_DELAY_PREFIX}$scopedId"
 
+    private fun subtitleRateKey(scopedId: String): String = "${KEY_SUBTITLE_RATE_PREFIX}$scopedId"
+
     companion object {
         private const val PREFS_FILE = "playback_track_selection_prefs"
         private const val KEY_AUDIO_PREFIX = "audio_"
         private const val KEY_SUBTITLE_PREFIX = "subtitle_"
         private const val KEY_SUBTITLE_DELAY_PREFIX = "subtitleDelay_"
+        private const val KEY_SUBTITLE_RATE_PREFIX = "subtitleRate_"
     }
 }

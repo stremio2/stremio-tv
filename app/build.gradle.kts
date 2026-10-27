@@ -112,6 +112,8 @@ composeCompiler {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+
     // 0. ASS/SSA subtitle renderer
     implementation(project(":assrender"))
 

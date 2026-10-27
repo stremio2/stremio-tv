@@ -42,6 +42,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClosedCaption
@@ -896,6 +898,7 @@ fun BasePlayerScaffold(
         SubtitleDelayTopBar(
             visible = showSubtitleDelayBar,
             delayMs = uiState.subtitleDelayMs,
+            rate = uiState.subtitleRate,
             isPlaying = isPlaybackIntended,
             onPlayPause = {
                 markInteraction()
@@ -908,6 +911,14 @@ fun BasePlayerScaffold(
             onIncrement = {
                 markInteraction()
                 playbackController.setSubtitleDelay(uiState.subtitleDelayMs + 100L)
+            },
+            onRatePrevious = {
+                markInteraction()
+                playbackController.setSubtitleRate(SubtitleRatePresets.step(uiState.subtitleRate, -1).rate)
+            },
+            onRateNext = {
+                markInteraction()
+                playbackController.setSubtitleRate(SubtitleRatePresets.step(uiState.subtitleRate, 1).rate)
             },
             onClose = {
                 markInteraction()
@@ -3751,10 +3762,13 @@ private fun BoxScope.SubtitleSizeTopBar(
 private fun BoxScope.SubtitleDelayTopBar(
     visible: Boolean,
     delayMs: Long,
+    rate: Double,
     isPlaying: Boolean,
     onPlayPause: () -> Unit,
     onDecrement: () -> Unit,
     onIncrement: () -> Unit,
+    onRatePrevious: () -> Unit,
+    onRateNext: () -> Unit,
     onClose: () -> Unit
 ) {
     if (!visible) return
@@ -3762,6 +3776,8 @@ private fun BoxScope.SubtitleDelayTopBar(
     val playPauseFocus = remember { FocusRequester() }
     val decrementFocus = remember { FocusRequester() }
     val incrementFocus = remember { FocusRequester() }
+    val ratePreviousFocus = remember { FocusRequester() }
+    val rateNextFocus = remember { FocusRequester() }
     val closeFocus = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
@@ -3864,7 +3880,7 @@ private fun BoxScope.SubtitleDelayTopBar(
                     .focusRequester(incrementFocus)
                     .focusProperties {
                         left = decrementFocus
-                        right = closeFocus
+                        right = ratePreviousFocus
                         up = incrementFocus
                         down = incrementFocus
                     }
@@ -3872,6 +3888,71 @@ private fun BoxScope.SubtitleDelayTopBar(
                 Icon(
                     imageVector = Icons.Filled.Add,
                     contentDescription = "Increase delay",
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            // FPS: subtitles authored for another frame rate drift over the film; a rate fixes that.
+            Text(
+                text = "FPS",
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(start = 8.dp)
+            )
+
+            IconButton(
+                onClick = onRatePrevious,
+                colors = IconButtonDefaults.colors(
+                    containerColor = Color.Transparent,
+                    contentColor = Color.White
+                ),
+                modifier = Modifier
+                    .size(40.dp)
+                    .focusRequester(ratePreviousFocus)
+                    .focusProperties {
+                        left = incrementFocus
+                        right = rateNextFocus
+                        up = ratePreviousFocus
+                        down = ratePreviousFocus
+                    }
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    contentDescription = "Previous FPS preset",
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Text(
+                text = SubtitleRatePresets.label(rate),
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.width(230.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                textAlign = TextAlign.Center
+            )
+
+            IconButton(
+                onClick = onRateNext,
+                colors = IconButtonDefaults.colors(
+                    containerColor = Color.Transparent,
+                    contentColor = Color.White
+                ),
+                modifier = Modifier
+                    .size(40.dp)
+                    .focusRequester(rateNextFocus)
+                    .focusProperties {
+                        left = ratePreviousFocus
+                        right = closeFocus
+                        up = rateNextFocus
+                        down = rateNextFocus
+                    }
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = "Next FPS preset",
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -3886,7 +3967,7 @@ private fun BoxScope.SubtitleDelayTopBar(
                     .size(40.dp)
                     .focusRequester(closeFocus)
                     .focusProperties {
-                        left = incrementFocus
+                        left = rateNextFocus
                         right = closeFocus
                         up = closeFocus
                         down = closeFocus
