@@ -240,6 +240,11 @@ class ExoPlayerBackend(
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
+            val player = exoPlayer
+            PlayerLog.i(
+                "state=${playbackStateName(playbackState)} pos=${player?.currentPosition}ms " +
+                    "dur=${player?.duration}ms buffered=${player?.bufferedPosition}ms source=$currentSourceId"
+            )
             _uiState.update {
                 it.copy(
                     isBuffering = playbackState == Player.STATE_BUFFERING,
@@ -274,22 +279,26 @@ class ExoPlayerBackend(
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            PlayerLog.d("isPlaying=$isPlaying")
             _uiState.update { it.copy(isPlaying = isPlaying) }
             updateProgressLoopState()
             updateProgressState()
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            PlayerLog.d("playWhenReady=$playWhenReady reason=$reason")
             _uiState.update { it.copy(playWhenReady = playWhenReady) }
             updateProgressLoopState()
             updateProgressState()
         }
 
         override fun onRenderedFirstFrame() {
+            PlayerLog.i("first frame rendered, pos=${exoPlayer?.currentPosition}ms")
             _uiState.update { it.copy(hasRenderedFirstFrame = true) }
         }
 
         override fun onTracksChanged(tracks: Tracks) {
+            PlayerLog.i("tracks changed: ${describeTracks(tracks)}")
             refreshTrackOptions(tracks)
             applyPendingTrackSelections()
             if (playbackSettings.assRendererEnabled) syncAssTrackWithExoPlayer(tracks)
@@ -301,11 +310,17 @@ class ExoPlayerBackend(
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            PlayerLog.e(
+                "player error ${error.errorCodeName} (${error.errorCode}) source=$currentSourceId " +
+                    "pos=${exoPlayer?.currentPosition}ms: ${error.message} cause=${error.cause?.javaClass?.simpleName}",
+                error
+            )
             if (retryFromStartAfter416(error)) return
             if (attemptAutoRetryFromIoError(error)) return
             // Parsing errors near the end of a stream are common with some sources.
             // Treat them as playback completion instead of showing an error.
             if (isParsingErrorNearEnd(error)) {
+                PlayerLog.w("parsing error near end of stream, treating as ended")
                 _uiState.update { it.copy(isEnded = true, isBuffering = false) }
                 return
             }
@@ -430,6 +445,11 @@ class ExoPlayerBackend(
     override fun load(request: PlayerLoadRequest) {
         if (released) return
         loadToken++
+        PlayerLog.i(
+            "load #$loadToken sources=${request.sources.size} externalSubtitles=${request.subtitles.size} " +
+                "preferredAudio=${request.preferredAudioTrackId} preferredSubtitle=${request.preferredSubtitleTrackId} " +
+                "startPosition=${request.startPositionMs}ms"
+        )
 
         // Emit loading state immediately so Compose can render the spinner
         _uiState.update {
@@ -566,7 +586,11 @@ class ExoPlayerBackend(
     override fun selectSource(sourceId: String) {
         if (released) return
         if (sourceId == currentSourceId) return
-        val source = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: return
+        val source = _sourceOptions.value.firstOrNull { it.id == sourceId } ?: run {
+            PlayerLog.w("selectSource: unknown source id $sourceId")
+            return
+        }
+        PlayerLog.i("selectSource $sourceId url=${PlayerLog.redact(source.url)}")
 
         // Magnet URLs need TorrentService — delegate to the callback
         if (source.url.startsWith("magnet:")) {
@@ -642,6 +666,12 @@ class ExoPlayerBackend(
         if (released) return
         val player = exoPlayer ?: return
         val id = normalizeSubtitleSelectionId(trackId) ?: SUBTITLE_OFF_ID
+        PlayerLog.i(
+            "selectSubtitleTrack $id " +
+                if (id == SUBTITLE_OFF_ID) "(off)"
+                else if (subtitleTrackLocators.containsKey(id)) "(track available)"
+                else "(pending: not yet in tracks, external=${id in externalSubtitleSources.keys})"
+        )
         val builder = player.trackSelectionParameters.buildUpon()
         builder.clearOverridesOfType(C.TRACK_TYPE_TEXT)
 
@@ -717,6 +747,7 @@ class ExoPlayerBackend(
         if (released) return
         val clamped = delayMs.coerceIn(MIN_SUBTITLE_DELAY_MS, MAX_SUBTITLE_DELAY_MS)
         subtitleDelayUs.set(clamped * 1000L)
+        PlayerLog.i("subtitle delay=${clamped}ms (requested ${delayMs}ms)")
         _uiState.update { it.copy(subtitleDelayMs = clamped) }
     }
 
@@ -724,6 +755,7 @@ class ExoPlayerBackend(
         if (released) return
         val sanitized = SubtitleRatePresets.sanitize(rate)
         subtitleRate = sanitized
+        PlayerLog.i("subtitle rate=${SubtitleRatePresets.label(sanitized)} ($sanitized, requested $rate)")
         _uiState.update { it.copy(subtitleRate = sanitized) }
     }
 
@@ -831,6 +863,7 @@ class ExoPlayerBackend(
     }
 
     override fun release() {
+        PlayerLog.i("release pos=${exoPlayer?.currentPosition}ms source=$currentSourceId")
         released = true
         frameRateManager?.restoreOriginalMode()
         assHandler?.release()
@@ -901,6 +934,10 @@ class ExoPlayerBackend(
         resetSourceRetryBudget: Boolean = true
     ) {
         val request = loadRequest ?: return
+        PlayerLog.i(
+            "prepareSource ${source.id} url=${PlayerLog.redact(source.url)} start=${startPositionMs}ms " +
+                "autoPlay=$autoPlay resetRetryBudget=$resetSourceRetryBudget"
+        )
 
         if (resetSourceRetryBudget) {
             ioAutoRetrySourceId = source.id
@@ -1250,7 +1287,10 @@ class ExoPlayerBackend(
     }
 
     private fun attemptAutoRetryFromIoError(error: PlaybackException): Boolean {
-        if (!isRecoverableError(error)) return false
+        if (!isRecoverableError(error)) {
+            PlayerLog.d("error ${error.errorCodeName} is not recoverable, no auto-retry")
+            return false
+        }
 
         val player = exoPlayer ?: return false
         val sourceId = currentSourceId ?: return false
@@ -1331,6 +1371,7 @@ class ExoPlayerBackend(
         if (httpCause.responseCode != 416) return false
 
         hasRetriedCurrentSourceAfter416 = true
+        PlayerLog.w("HTTP 416 on source $currentSourceId, retrying from start")
         val player = exoPlayer ?: return false
         val source = _sourceOptions.value.firstOrNull { it.id == currentSourceId } ?: return false
 
@@ -2049,6 +2090,28 @@ class ExoPlayerBackend(
         val languageKey = normalizedSubtitleLanguageKey(language) ?: "und"
         return "$labelKey|$languageKey"
     }
+}
+
+private fun playbackStateName(state: Int): String = when (state) {
+    Player.STATE_IDLE -> "IDLE"
+    Player.STATE_BUFFERING -> "BUFFERING"
+    Player.STATE_READY -> "READY"
+    Player.STATE_ENDED -> "ENDED"
+    else -> "UNKNOWN($state)"
+}
+
+/** One-line summary of the tracks ExoPlayer exposes, e.g. `video=1 audio=2(1 sel) text=3(1 sel)`. */
+private fun describeTracks(tracks: Tracks): String {
+    val parts = listOf(
+        "video" to C.TRACK_TYPE_VIDEO,
+        "audio" to C.TRACK_TYPE_AUDIO,
+        "text" to C.TRACK_TYPE_TEXT
+    ).map { (name, type) ->
+        val groups = tracks.groups.filter { it.type == type }
+        val selected = groups.count { it.isSelected }
+        "$name=${groups.sumOf { it.length }}${if (selected > 0) "($selected sel)" else ""}"
+    }
+    return parts.joinToString(" ")
 }
 
 private class SubtitleDelayRenderersFactory(

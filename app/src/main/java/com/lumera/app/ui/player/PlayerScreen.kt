@@ -21,6 +21,7 @@ import kotlinx.coroutines.delay
 import com.lumera.app.ui.player.base.BasePlayerScaffold
 import com.lumera.app.ui.player.base.NextEpisodeInfo
 import com.lumera.app.ui.player.base.PlaybackSettings
+import com.lumera.app.ui.player.base.PlayerLog
 import com.lumera.app.ui.player.base.ExoPlayerBackend
 import com.lumera.app.ui.player.base.PlayerBackendFactory
 import com.lumera.app.ui.player.base.PlayerBackendType
@@ -186,6 +187,11 @@ fun PlayerScreen(
     LaunchedEffect(movieId, videoUrl, backendType) {
         if (videoUrl.isBlank()) return@LaunchedEffect // Wait for torrent stream URL
         val resumePosition = viewModel.getResumePosition(movieId)
+        PlayerLog.i(
+            "start playback id=$movieId type=$mediaType backend=$backendType url=${PlayerLog.redact(videoUrl)} " +
+                "resume=${resumePosition}ms sources=${sources.size} subtitles=${subtitles.size} " +
+                "initialDelay=${initialSubtitleDelayMs}ms initialRate=$initialSubtitleRate"
+        )
         playbackController.load(
             PlayerLoadRequest(
                 mediaUrl = videoUrl,
@@ -212,6 +218,11 @@ fun PlayerScreen(
     }
 
     val persistAndBack = {
+        PlayerLog.i(
+            "leaving player: pos=${uiState.positionMs}ms dur=${uiState.durationMs}ms ended=${uiState.isEnded} " +
+                "error=${uiState.errorMessage} audio=${uiState.selectedAudioTrackId} " +
+                "subtitle=${uiState.selectedSubtitleTrackId} delay=${uiState.subtitleDelayMs}ms rate=${uiState.subtitleRate}"
+        )
         val hasError = !uiState.errorMessage.isNullOrBlank()
         val position = uiState.positionMs.coerceAtLeast(0L)
         val duration = uiState.durationMs.takeIf { it > 0L }

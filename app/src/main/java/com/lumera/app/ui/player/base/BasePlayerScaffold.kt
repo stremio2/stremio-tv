@@ -367,6 +367,11 @@ fun BasePlayerScaffold(
     }
 
     fun handleBackAction() {
+        PlayerLog.d(
+            "back: ended=${uiState.isEnded} error=${!uiState.errorMessage.isNullOrBlank()} panelOpen=$panelOpen " +
+                "controls=$showControls pauseOverlay=$showPauseOverlay autoplayOverlay=$overlayVisible " +
+                "episodeSwitch=${episodeSwitchSources != null || isEpisodeSwitchLoading}"
+        )
         when {
             episodeSwitchSources != null || isEpisodeSwitchLoading -> {
                 onEpisodeSwitchDismissed?.invoke()
@@ -389,6 +394,13 @@ fun BasePlayerScaffold(
             showSubtitleColorBar -> {
                 markInteraction()
                 showSubtitleColorBar = false
+            }
+            // Playback finished (e.g. the last aired episode, so there is no next one to autoplay):
+            // Back must leave the player. Without this it kept cycling through the controls and pause
+            // overlays and never reached onBack().
+            uiState.isEnded && !panelOpen -> {
+                PlayerLog.i("back after playback ended, leaving player")
+                onBack()
             }
             showPauseOverlay -> {
                 markInteraction()
